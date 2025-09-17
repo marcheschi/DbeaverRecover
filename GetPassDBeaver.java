@@ -29,6 +29,12 @@ public class GetPassDBeaver {
             if(OS.indexOf("nix") >= 0 || OS.indexOf("nux") >= 0 || OS.indexOf("aix") > 0){
                 pathFileString = "/home/" + System.getProperty("user.name") + "/.local/share/DBeaverData/workspace6/General/.dbeaver/credentials-config.json";
                 pathFile = Paths.get(pathFileString);
+            } else if (OS.indexOf("win") >= 0) {
+                String appData = System.getenv("APPDATA");
+                if (appData != null) {
+                    pathFileString = appData + "\\DBeaverData\\workspace6\\General\\.dbeaver\\credentials-config.json";
+                    pathFile = Paths.get(pathFileString);
+                }
             }
         }
 
