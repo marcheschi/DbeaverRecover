@@ -5,43 +5,51 @@ This Java utility allows you to decrypt stored database credentials from DBeaver
 ## Features
 
 - Decrypts DBeaver stored credentials using AES/CBC/PKCS5Padding encryption
-- Supports automatic detection of credentials file location on Linux systems
-- Command-line interface for easy integration with scripts
+- Graphical User Interface (GUI) for an intuitive user experience.
+- Decrypts DBeaver stored credentials using AES/CBC/PKCS5Padding encryption.
 
 ## Requirements
 
-- Java Runtime Environment (JRE) 8 or higher
-- DBeaver credentials configuration file (credentials-config.json)
+- Java Development Kit (JDK) 8 or higher
+- Apache Maven
+- DBeaver credentials configuration file (`credentials-config.json`)
 
-## Compilation
+## Build
 
-To compile the program:
-
-```bash
-javac GetPassDBeaver.java
-```
-
-## Usage
+To build the application and create an executable JAR file, run the following Maven command:
 
 ```bash
-java GetPassDBeaver [path_to_credentials_file]
+mvn package
+```
+This will generate the `getpassdbeaver-1.0-SNAPSHOT.jar` file in the `target` directory.
+
+## Running the Application
+
+There are two ways to run the application:
+
+### Using Maven
+
+You can run the application directly using the Maven `exec` plugin:
+
+```bash
+mvn exec:java
 ```
 
-### Arguments
+### Using the JAR file
 
-- `path_to_credentials_file`: (Optional) Path to the DBeaver credentials configuration file. If not provided, the program will attempt to locate the file automatically on Linux systems.
+Alternatively, you can run the generated JAR file from the `target` directory:
+
+```bash
+java -jar target/getpassdbeaver-1.0-SNAPSHOT.jar
+```
+
+Once the application is running, click the "Open credentials-config.json" button and select your DBeaver `credentials-config.json` file to view the decrypted content.
 
 ### Default Credentials File Locations
 
 - Linux: `~/.local/share/DBeaverData/workspace6/General/.dbeaver/credentials-config.json`
-- Windows: `%APPDATA%\.dbeaver4\credentials-config.json`
+- Windows: `%APDATA%\DBeaverData\workspace6\General\.dbeaver\credentials-config.json`
 - macOS: `~/Library/DBeaverData/workspace6/General/.dbeaver/credentials-config.json`
-
-## Example
-
-```bash
-java GetPassDBeaver ~/.local/share/DBeaverData/workspace6/General/.dbeaver/credentials-config.json
-```
 
 ## Security Notice
 
