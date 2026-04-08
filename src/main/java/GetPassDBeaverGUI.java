@@ -390,7 +390,7 @@ public class GetPassDBeaverGUI extends JFrame {
         String userHome = System.getProperty("user.home");
         String os = System.getProperty("os.name").toLowerCase();
         
-        // Define search paths based on OS
+        // Define search paths based on OS (for quick check first)
         java.util.List<Path> searchPaths = new java.util.ArrayList<>();
         
         if (os.contains("win")) {
@@ -399,8 +399,6 @@ public class GetPassDBeaverGUI extends JFrame {
             if (appData != null) {
                 searchPaths.add(Paths.get(appData, "DBeaverData", "workspace6", "General", ".dbeaver"));
                 searchPaths.add(Paths.get(appData, "DBeaver", "workspace6", "General", ".dbeaver"));
-                searchPaths.add(Paths.get(userHome, "AppData", "Roaming", "DBeaverData", "workspace6", "General", ".dbeaver"));
-                searchPaths.add(Paths.get(userHome, "AppData", "Local", "DBeaverData", "workspace6", "General", ".dbeaver"));
             }
         } else if (os.contains("mac")) {
             // macOS
@@ -409,38 +407,70 @@ public class GetPassDBeaverGUI extends JFrame {
         } else {
             // Linux and other Unix-like systems
             searchPaths.add(Paths.get(userHome, ".local", "share", "DBeaverData", "workspace6", "General", ".dbeaver"));
-            searchPaths.add(Paths.get(userHome, ".dbeaver", "workspace6", "General", ".dbeaver"));
-            searchPaths.add(Paths.get(userHome, ".local", "share", "DBeaver", "workspace6", "General", ".dbeaver"));
-            searchPaths.add(Paths.get(userHome, "DBeaverData", "workspace6", "General", ".dbeaver"));
+            searchPaths.add(Paths.get(userHome, ".dbeaver-data", "workspace6", "General", ".dbeaver"));
         }
         
-        // First check if any of the standard paths exist
+        // First check if any of the standard paths exist with BOTH files
         for (Path p : searchPaths) {
-            if (Files.exists(p) && Files.exists(p.resolve("credentials-config.json"))) {
+            boolean hasCred = Files.exists(p.resolve("credentials-config.json"));
+            boolean hasSrc = Files.exists(p.resolve("data-sources.json"));
+            if (hasCred && hasSrc) {
+                System.out.println("Found standard config folder: " + p);
                 return p;
             }
         }
         
-        // If not found in standard paths, search recursively from home directory with more depth
-        try (Stream<Path> stream = Files.walk(Paths.get(userHome), 15)) {
-            return stream
-                .filter(Files::isDirectory)
-                .filter(p -> p.endsWith(".dbeaver"))
-                .filter(p -> {
-                    boolean hasCredentials = Files.exists(p.resolve("credentials-config.json"));
-                    if (hasCredentials) {
-                        System.out.println("Found credentials-config.json at: " + p);
-                    }
-                    return hasCredentials;
-                })
-                .findFirst()
-                .orElse(null);
-        } catch (IOException e) {
-            System.err.println("Error searching for DBeaver config: " + e.getMessage());
+        // EXACT LOGIC FROM BASH SCRIPT: use 'find' to locate first occurrence of either file
+        System.out.println("Searching home directory using 'find' command...");
+        try {
+            ProcessBuilder pb;
+            if (os.contains("win")) {
+                // Windows search using PowerShell
+                pb = new ProcessBuilder("powershell", "-Command", 
+                    "Get-ChildItem -Path $env:USERPROFILE -Recurse -File -Filter 'credentials-config.json' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName");
+            } else {
+                // Linux/Mac search using 'find' - EXACT COMMAND FROM BASH SCRIPT
+                pb = new ProcessBuilder("find", userHome, "-type", "f", 
+                    "(", "-name", "credentials-config.json", "-o", "-name", "data-sources.json", ")", 
+                    "-print", "-quit");
+            }
+            
+            Process process = pb.start();
+            java.io.BufferedReader reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(process.getInputStream()));
+            String foundFilePath = reader.readLine();
+            int exitCode = process.waitFor();
+            
+            if (foundFilePath != null && !foundFilePath.trim().isEmpty()) {
+                Path foundFile = Paths.get(foundFilePath.trim());
+                Path parentFolder = foundFile.getParent();
+                System.out.println("Found candidate file: " + foundFile);
+                System.out.println("Candidate folder: " + parentFolder);
+                
+                // Verify BOTH files exist in this folder (like bash script does)
+                Path credFile = parentFolder.resolve("credentials-config.json");
+                Path srcFile = parentFolder.resolve("data-sources.json");
+                
+                if (Files.exists(credFile) && Files.exists(srcFile)) {
+                    System.out.println("SUCCESS: Both files found in " + parentFolder);
+                    return parentFolder;
+                } else {
+                    StringBuilder missing = new StringBuilder("Found folder but missing: ");
+                    if (!Files.exists(credFile)) missing.append("credentials-config.json ");
+                    if (!Files.exists(srcFile)) missing.append("data-sources.json");
+                    System.out.println(missing.toString());
+                    System.out.println("Manual selection required.");
+                    return null;
+                }
+            } else {
+                System.out.println("No configuration files found in home directory.");
+                return null;
+            }
+        } catch (Exception e) {
+            System.err.println("Error during automatic search: " + e.getMessage());
             e.printStackTrace();
+            return null;
         }
-        
-        return null;
     }
 
     private void exportToCSV() {
