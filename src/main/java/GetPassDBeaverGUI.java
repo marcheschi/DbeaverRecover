@@ -13,6 +13,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 import javax.crypto.Cipher;
 import javax.crypto.CipherInputStream;
 import javax.crypto.NoSuchPaddingException;
@@ -30,6 +31,7 @@ public class GetPassDBeaverGUI extends JFrame {
     private JLabel statusLabel;
     private JComboBox<String> connectionComboBox;
     private Map<String, String> connectionMap;
+    private Path currentConfigFolder;
 
     private static final byte[] LOCAL_KEY_CACHE = new byte[] { -70, -69, 74, -97, 119, 74, -72, 83, -55, 108, 45, 101, 61, -2, 84, 74 };
 
@@ -112,6 +114,9 @@ public class GetPassDBeaverGUI extends JFrame {
             textArea.setText(decryptedContent);
             statusLabel.setText("File decrypted successfully!");
             
+            // Store the config folder path for later use
+            currentConfigFolder = filePath.getParent();
+            
             // Parse and populate connection selector
             parseConnections(decryptedContent);
         } catch (IOException | InvalidAlgorithmParameterException | InvalidKeyException | NoSuchPaddingException | NoSuchAlgorithmException ex) {
@@ -123,55 +128,105 @@ public class GetPassDBeaverGUI extends JFrame {
     private void parseConnections(String decryptedContent) {
         try {
             JSONObject json = new JSONObject(decryptedContent);
-            JSONArray datasources = json.getJSONArray("datasources");
             
             // Clear existing items except the default
             connectionComboBox.removeAllItems();
             connectionComboBox.addItem("-- Select Connection --");
             connectionMap.clear();
             
-            for (int i = 0; i < datasources.length(); i++) {
-                JSONObject datasource = datasources.getJSONObject(i);
-                String id = datasource.getString("id");
-                String name = datasource.optString("name", id);
-                String host = datasource.optString("host", "N/A");
-                String port = datasource.optString("port", "N/A");
-                String database = datasource.optString("database", "N/A");
-                String driver = datasource.optString("driver", "N/A");
+            // Try the newer DBeaver format with "connections" object
+            if (json.has("connections")) {
+                JSONObject connections = json.getJSONObject("connections");
+                JSONArray keys = connections.names();
                 
-                // Build connection info string
-                StringBuilder info = new StringBuilder();
-                info.append("Connection Name: ").append(name).append("\n");
-                info.append("ID: ").append(id).append("\n");
-                info.append("Host: ").append(host).append("\n");
-                info.append("Port: ").append(port).append("\n");
-                info.append("Database: ").append(database).append("\n");
-                info.append("Driver: ").append(driver).append("\n");
-                
-                if (datasource.has("password")) {
-                    info.append("Password: ").append(datasource.getString("password")).append("\n");
+                if (keys != null) {
+                    for (int i = 0; i < keys.length(); i++) {
+                        String connId = keys.getString(i);
+                        JSONObject connData = connections.getJSONObject(connId);
+                        
+                        String name = connData.optString("name", connId);
+                        String host = connData.optString("host", "N/A");
+                        String port = connData.optString("port", "N/A");
+                        String database = connData.optString("database", "N/A");
+                        String driver = connData.optString("driver", "N/A");
+                        
+                        // Build connection info string
+                        StringBuilder info = new StringBuilder();
+                        info.append("Connection Name: ").append(name).append("\n");
+                        info.append("ID: ").append(connId).append("\n");
+                        info.append("Host: ").append(host).append("\n");
+                        info.append("Port: ").append(port).append("\n");
+                        info.append("Database: ").append(database).append("\n");
+                        info.append("Driver: ").append(driver).append("\n");
+                        
+                        connectionMap.put(connId, info.toString());
+                        connectionComboBox.addItem(connId + " - " + name);
+                    }
+                    
+                    statusLabel.setText("File decrypted successfully! Found " + keys.length() + " connection(s).");
+                    return;
                 }
-                if (datasource.has("username")) {
-                    info.append("Username: ").append(datasource.getString("username")).append("\n");
-                }
-                
-                connectionMap.put(id, info.toString());
-                connectionComboBox.addItem(id + " - " + name);
             }
             
-            statusLabel.setText("File decrypted successfully! Found " + datasources.length() + " connection(s).");
+            // Fallback to older format with "datasources" array
+            if (json.has("datasources")) {
+                JSONArray datasources = json.getJSONArray("datasources");
+                
+                for (int i = 0; i < datasources.length(); i++) {
+                    JSONObject datasource = datasources.getJSONObject(i);
+                    String id = datasource.getString("id");
+                    String name = datasource.optString("name", id);
+                    String host = datasource.optString("host", "N/A");
+                    String port = datasource.optString("port", "N/A");
+                    String database = datasource.optString("database", "N/A");
+                    String driver = datasource.optString("driver", "N/A");
+                    
+                    // Build connection info string
+                    StringBuilder info = new StringBuilder();
+                    info.append("Connection Name: ").append(name).append("\n");
+                    info.append("ID: ").append(id).append("\n");
+                    info.append("Host: ").append(host).append("\n");
+                    info.append("Port: ").append(port).append("\n");
+                    info.append("Database: ").append(database).append("\n");
+                    info.append("Driver: ").append(driver).append("\n");
+                    
+                    if (datasource.has("password")) {
+                        info.append("Password: ").append(datasource.getString("password")).append("\n");
+                    }
+                    if (datasource.has("username")) {
+                        info.append("Username: ").append(datasource.getString("username")).append("\n");
+                    }
+                    
+                    connectionMap.put(id, info.toString());
+                    connectionComboBox.addItem(id + " - " + name);
+                }
+                
+                statusLabel.setText("File decrypted successfully! Found " + datasources.length() + " connection(s).");
+            }
         } catch (Exception e) {
             statusLabel.setText("Warning: Could not parse connections: " + e.getMessage());
         }
     }
 
     private void autoSelectAndDecrypt() {
-        Path credentialsPath = getDefaultCredentialsPath();
+        // First, try to find any DBeaver config folder using the bash script logic
+        Path configFolder = findDBeaverConfigFolder();
         
-        if (credentialsPath == null || !Files.exists(credentialsPath)) {
+        if (configFolder == null) {
             JOptionPane.showMessageDialog(this, 
-                "Could not find credentials-config.json at default locations.\n" +
+                "Could not find DBeaver configuration files.\n" +
                 "Please use 'Open credentials-config.json' button to select manually.",
+                "File Not Found",
+                JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        
+        Path credentialsPath = configFolder.resolve("credentials-config.json");
+        Path dataSourcesPath = configFolder.resolve("data-sources.json");
+        
+        if (!Files.exists(credentialsPath)) {
+            JOptionPane.showMessageDialog(this, 
+                "credentials-config.json not found at: " + credentialsPath,
                 "File Not Found",
                 JOptionPane.WARNING_MESSAGE);
             return;
@@ -179,54 +234,186 @@ public class GetPassDBeaverGUI extends JFrame {
         
         statusLabel.setText("Auto-selected: " + credentialsPath.toString());
         decryptFile(credentialsPath);
+        
+        // Also try to load and display data-sources.json if it exists
+        if (Files.exists(dataSourcesPath)) {
+            try {
+                String dataSourcesContent = new String(Files.readAllBytes(dataSourcesPath));
+                parseConnectionsFromDataSources(dataSourcesContent);
+            } catch (IOException e) {
+                statusLabel.setText("Loaded credentials but could not read data-sources.json: " + e.getMessage());
+            }
+        }
     }
 
-    private Path getDefaultCredentialsPath() {
-        String os = System.getProperty("os.name").toLowerCase();
+    private Path findDBeaverConfigFolder() {
         String userHome = System.getProperty("user.home");
+        String os = System.getProperty("os.name").toLowerCase();
         
-        // Try different DBeaver data paths based on OS
+        // Define search paths based on OS
+        java.util.List<Path> searchPaths = new java.util.ArrayList<>();
+        
         if (os.contains("win")) {
             // Windows
             String appData = System.getenv("APPDATA");
             if (appData != null) {
-                Path[] winPaths = {
-                    Paths.get(appData, "DBeaverData", "workspace6", "General", ".dbeaver", "credentials-config.json"),
-                    Paths.get(appData, "DBeaver", "workspace6", "General", ".dbeaver", "credentials-config.json"),
-                    Paths.get(userHome, "AppData", "Roaming", "DBeaverData", "workspace6", "General", ".dbeaver", "credentials-config.json")
-                };
-                for (Path p : winPaths) {
-                    if (Files.exists(p)) {
-                        return p;
-                    }
-                }
+                searchPaths.add(Paths.get(appData, "DBeaverData", "workspace6", "General", ".dbeaver"));
+                searchPaths.add(Paths.get(appData, "DBeaver", "workspace6", "General", ".dbeaver"));
+                searchPaths.add(Paths.get(userHome, "AppData", "Roaming", "DBeaverData", "workspace6", "General", ".dbeaver"));
+                searchPaths.add(Paths.get(userHome, "AppData", "Local", "DBeaverData", "workspace6", "General", ".dbeaver"));
             }
         } else if (os.contains("mac")) {
             // macOS
-            Path[] macPaths = {
-                Paths.get(userHome, "Library", "DBeaverData", "workspace6", "General", ".dbeaver", "credentials-config.json"),
-                Paths.get(userHome, "Library", "Application Support", "DBeaver", "workspace6", "General", ".dbeaver", "credentials-config.json")
-            };
-            for (Path p : macPaths) {
-                if (Files.exists(p)) {
-                    return p;
-                }
-            }
+            searchPaths.add(Paths.get(userHome, "Library", "DBeaverData", "workspace6", "General", ".dbeaver"));
+            searchPaths.add(Paths.get(userHome, "Library", "Application Support", "DBeaver", "workspace6", "General", ".dbeaver"));
         } else {
             // Linux and other Unix-like systems
-            Path[] linuxPaths = {
-                Paths.get(userHome, ".local", "share", "DBeaverData", "workspace6", "General", ".dbeaver", "credentials-config.json"),
-                Paths.get(userHome, ".dbeaver", "workspace6", "General", ".dbeaver", "credentials-config.json"),
-                Paths.get(userHome, ".local", "share", "DBeaver", "workspace6", "General", ".dbeaver", "credentials-config.json")
-            };
-            for (Path p : linuxPaths) {
-                if (Files.exists(p)) {
-                    return p;
-                }
+            searchPaths.add(Paths.get(userHome, ".local", "share", "DBeaverData", "workspace6", "General", ".dbeaver"));
+            searchPaths.add(Paths.get(userHome, ".dbeaver", "workspace6", "General", ".dbeaver"));
+            searchPaths.add(Paths.get(userHome, ".local", "share", "DBeaver", "workspace6", "General", ".dbeaver"));
+            searchPaths.add(Paths.get(userHome, "DBeaverData", "workspace6", "General", ".dbeaver"));
+        }
+        
+        // First check if any of the standard paths exist
+        for (Path p : searchPaths) {
+            if (Files.exists(p) && Files.exists(p.resolve("credentials-config.json"))) {
+                return p;
             }
         }
         
+        // If not found in standard paths, search recursively from home directory with more depth
+        try (Stream<Path> stream = Files.walk(Paths.get(userHome), 10)) {
+            return stream
+                .filter(Files::isDirectory)
+                .filter(p -> p.endsWith(".dbeaver"))
+                .filter(p -> Files.exists(p.resolve("credentials-config.json")))
+                .findFirst()
+                .orElse(null);
+        } catch (IOException e) {
+            // Ignore and return null
+        }
+        
         return null;
+    }
+
+    private void parseConnectionsFromDataSources(String dataSourcesContent) {
+        try {
+            JSONObject json = new JSONObject(dataSourcesContent);
+            
+            // Try the newer DBeaver format with "connections" object
+            if (json.has("connections")) {
+                JSONObject connections = json.getJSONObject("connections");
+                JSONArray keys = connections.names();
+                
+                if (keys != null) {
+                    // Update existing connection map with additional info from data-sources.json
+                    for (int i = 0; i < keys.length(); i++) {
+                        String connId = keys.getString(i);
+                        JSONObject connData = connections.getJSONObject(connId);
+                        
+                        String name = connData.optString("name", connId);
+                        String host = connData.optString("host", "N/A");
+                        String port = connData.optString("port", "N/A");
+                        String database = connData.optString("database", "N/A");
+                        String driver = connData.optString("driver", "N/A");
+                        String folder = connData.optString("folder", "N/A");
+                        
+                        // Build or update connection info string
+                        StringBuilder info = new StringBuilder();
+                        info.append("Folder: ").append(folder).append("\n");
+                        info.append("Connection Name: ").append(name).append("\n");
+                        info.append("ID: ").append(connId).append("\n");
+                        info.append("Host: ").append(host).append("\n");
+                        info.append("Port: ").append(port).append("\n");
+                        info.append("Database: ").append(database).append("\n");
+                        info.append("Driver: ").append(driver).append("\n");
+                        
+                        // If we already have this connection from credentials, merge the info
+                        if (connectionMap.containsKey(connId)) {
+                            String existingInfo = connectionMap.get(connId);
+                            // Extract username and password from existing info if present
+                            if (existingInfo.contains("Username:")) {
+                                String[] lines = existingInfo.split("\n");
+                                for (String line : lines) {
+                                    if (line.startsWith("Username:") || line.startsWith("Password:")) {
+                                        info.append(line).append("\n");
+                                    }
+                                }
+                            }
+                        }
+                        
+                        connectionMap.put(connId, info.toString());
+                    }
+                    
+                    // Refresh combo box if needed
+                    if (connectionComboBox.getItemCount() <= 1) {
+                        connectionComboBox.removeAllItems();
+                        connectionComboBox.addItem("-- Select Connection --");
+                        for (String key : connectionMap.keySet()) {
+                            connectionComboBox.addItem(key + " - " + connectionMap.get(key).split("\n")[1].replace("Connection Name: ", ""));
+                        }
+                    }
+                    
+                    statusLabel.setText("Found " + keys.length() + " connection(s) from data-sources.json");
+                    return;
+                }
+            }
+            
+            // Fallback to older format with "datasources" array
+            if (json.has("datasources")) {
+                JSONArray datasources = json.getJSONArray("datasources");
+                
+                for (int i = 0; i < datasources.length(); i++) {
+                    JSONObject datasource = datasources.getJSONObject(i);
+                    String id = datasource.getString("id");
+                    String name = datasource.optString("name", id);
+                    String host = datasource.optString("host", "N/A");
+                    String port = datasource.optString("port", "N/A");
+                    String database = datasource.optString("database", "N/A");
+                    String driver = datasource.optString("driver", "N/A");
+                    String folder = datasource.optString("folder", "N/A");
+                    
+                    // Build connection info string
+                    StringBuilder info = new StringBuilder();
+                    info.append("Folder: ").append(folder).append("\n");
+                    info.append("Connection Name: ").append(name).append("\n");
+                    info.append("ID: ").append(id).append("\n");
+                    info.append("Host: ").append(host).append("\n");
+                    info.append("Port: ").append(port).append("\n");
+                    info.append("Database: ").append(database).append("\n");
+                    info.append("Driver: ").append(driver).append("\n");
+                    
+                    // If we already have this connection from credentials, merge the info
+                    if (connectionMap.containsKey(id)) {
+                        String existingInfo = connectionMap.get(id);
+                        // Extract username and password from existing info if present
+                        if (existingInfo.contains("Username:") || existingInfo.contains("Password:")) {
+                            String[] lines = existingInfo.split("\n");
+                            for (String line : lines) {
+                                if (line.startsWith("Username:") || line.startsWith("Password:")) {
+                                    info.append(line).append("\n");
+                                }
+                            }
+                        }
+                    }
+                    
+                    connectionMap.put(id, info.toString());
+                }
+                
+                // Refresh combo box if needed
+                if (connectionComboBox.getItemCount() <= 1) {
+                    connectionComboBox.removeAllItems();
+                    connectionComboBox.addItem("-- Select Connection --");
+                    for (String key : connectionMap.keySet()) {
+                        connectionComboBox.addItem(key + " - " + connectionMap.get(key).split("\n")[1].replace("Connection Name: ", ""));
+                    }
+                }
+                
+                statusLabel.setText("Found " + datasources.length() + " connection(s) from data-sources.json");
+            }
+        } catch (Exception e) {
+            statusLabel.setText("Warning: Could not parse data-sources.json: " + e.getMessage());
+        }
     }
 
     private static String decrypt(byte[] contents) throws InvalidAlgorithmParameterException, InvalidKeyException,
