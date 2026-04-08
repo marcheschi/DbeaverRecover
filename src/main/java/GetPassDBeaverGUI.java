@@ -360,6 +360,8 @@ public class GetPassDBeaverGUI extends JFrame {
     }
 
     private void autoSelectAndDecrypt() {
+        System.out.println("=== Starting Auto-Select (Bash Logic) ===");
+        
         // First, try to find any DBeaver config folder using the bash script logic
         Path configFolder = findDBeaverConfigFolder();
         
@@ -373,6 +375,7 @@ public class GetPassDBeaverGUI extends JFrame {
         }
         
         Path credentialsPath = configFolder.resolve("credentials-config.json");
+        Path dataSourcesPath = configFolder.resolve("data-sources.json");
         
         if (!Files.exists(credentialsPath)) {
             JOptionPane.showMessageDialog(this, 
@@ -382,8 +385,169 @@ public class GetPassDBeaverGUI extends JFrame {
             return;
         }
         
+        if (!Files.exists(dataSourcesPath)) {
+            JOptionPane.showMessageDialog(this, 
+                "data-sources.json not found at: " + dataSourcesPath,
+                "File Not Found",
+                JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        
+        System.out.println("Auto-selected folder: " + configFolder);
+        System.out.println("Credentials file: " + credentialsPath);
+        System.out.println("Data sources file: " + dataSourcesPath);
+        
         statusLabel.setText("Auto-selected: " + credentialsPath.toString());
-        decryptFile(credentialsPath);
+        
+        // Decrypt and merge both files
+        decryptAndMerge(credentialsPath, dataSourcesPath);
+    }
+
+    private void decryptAndMerge(Path credentialsPath, Path dataSourcesPath) {
+        System.out.println("=== Starting Decryption and Merge Process ===");
+        try {
+            // Step 1: Read and decrypt credentials-config.json
+            System.out.println("Reading encrypted file: " + credentialsPath);
+            byte[] encryptedContent = Files.readAllBytes(credentialsPath);
+            System.out.println("Encrypted content size: " + encryptedContent.length + " bytes");
+            
+            if (encryptedContent.length < 32) {
+                throw new Exception("File too small to be valid encrypted content");
+            }
+
+            // Skip first 16 bytes (salt/header) like bash script: dd bs=1 skip=16
+            byte[] actualCipherText = java.util.Arrays.copyOfRange(encryptedContent, 16, encryptedContent.length);
+            System.out.println("Actual ciphertext size (after skipping 16 bytes): " + actualCipherText.length + " bytes");
+
+            String encryptionKey = "babb4a9f774ab853c96c2d653dfe544a";
+            String encryptionIv = "00000000000000000000000000000000";
+            String algorithm = "AES/CBC/PKCS5Padding";
+
+            SecretKeySpec keySpec = new SecretKeySpec(encryptionKey.getBytes(java.nio.charset.StandardCharsets.UTF_8), "AES");
+            IvParameterSpec ivSpec = new IvParameterSpec(encryptionIv.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            
+            Cipher cipher = Cipher.getInstance(algorithm);
+            cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
+            
+            byte[] decryptedBytes = cipher.doFinal(actualCipherText);
+            String decryptedCredentialsJson = new String(decryptedBytes, java.nio.charset.StandardCharsets.UTF_8).trim();
+            
+            System.out.println("Decryption successful!");
+            System.out.println("Decrypted credentials JSON preview (first 200 chars): " + 
+                (decryptedCredentialsJson.length() > 200 ? decryptedCredentialsJson.substring(0, 200) + "..." : decryptedCredentialsJson));
+
+            if (decryptedCredentialsJson.isEmpty() || !decryptedCredentialsJson.startsWith("{")) {
+                throw new Exception("Decrypted content is not valid JSON or is empty.");
+            }
+
+            // Step 2: Read data-sources.json
+            String dataSourcesJson = new String(Files.readAllBytes(dataSourcesPath), java.nio.charset.StandardCharsets.UTF_8);
+            System.out.println("Read data-sources.json, size: " + dataSourcesJson.length() + " bytes");
+
+            // Step 3: Parse and merge like bash script does with jq
+            parseAndMergeConnections(decryptedCredentialsJson, dataSourcesJson);
+
+        } catch (Exception e) {
+            System.err.println("Decryption FAILED: " + e.getMessage());
+            e.printStackTrace();
+            SwingUtilities.invokeLater(() -> {
+                statusLabel.setText("Decryption failed");
+                statusLabel.setForeground(Color.RED);
+                JOptionPane.showMessageDialog(this, 
+                    "Decryption failed:\n" + e.getMessage(),
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
+            });
+        }
+    }
+
+    private void parseAndMergeConnections(String credentialsJson, String dataSourcesJson) {
+        System.out.println("=== Parsing and Merging Connections ===");
+        try {
+            JSONObject credentials = new JSONObject(credentialsJson);
+            JSONObject dataSources = new JSONObject(dataSourcesJson);
+            
+            // Clear existing data
+            connectionsList.clear();
+            tableModel.setRowCount(0);
+            
+            // Check if data-sources has "connections" object (newer format)
+            if (!dataSources.has("connections")) {
+                System.out.println("No 'connections' object found in data-sources.json");
+                statusLabel.setText("No connections found in data-sources.json");
+                return;
+            }
+            
+            JSONObject connectionsObj = dataSources.getJSONObject("connections");
+            JSONArray connectionIds = connectionsObj.names();
+            
+            if (connectionIds == null || connectionIds.length() == 0) {
+                System.out.println("No connections found");
+                statusLabel.setText("No connections found");
+                return;
+            }
+            
+            System.out.println("Found " + connectionIds.length() + " connection(s) in data-sources.json");
+            
+            // Iterate through each connection like bash script: .connections | to_entries[]
+            for (int i = 0; i < connectionIds.length(); i++) {
+                String connId = connectionIds.getString(i);
+                JSONObject connData = connectionsObj.getJSONObject(connId);
+                
+                ConnectionInfo info = new ConnectionInfo();
+                info.id = connId;
+                info.connectionName = connData.optString("name", connId);
+                info.folder = connData.optString("folder", "N/A");
+                info.host = connData.optString("host", "N/A");
+                info.port = connData.optString("port", "N/A");
+                info.database = connData.optString("database", "N/A");
+                info.driver = connData.optString("driver", "N/A");
+                info.username = "N/A";
+                info.password = "N/A";
+                
+                // Get credentials from decrypted credentials-config.json
+                // Bash logic: ($creds[$conn.key] // {}) as $cred
+                if (credentials.has(connId)) {
+                    JSONObject cred = credentials.getJSONObject(connId);
+                    // Extract from #connection object: $cred["#connection"].user/password
+                    if (cred.has("#connection")) {
+                        JSONObject connectionCred = cred.getJSONObject("#connection");
+                        if (connectionCred.has("user")) {
+                            info.username = connectionCred.getString("user");
+                        }
+                        if (connectionCred.has("password")) {
+                            info.password = connectionCred.getString("password");
+                        }
+                    }
+                }
+                
+                connectionsList.add(info);
+                System.out.println("Added connection: " + info.connectionName + " (user: " + info.username + ")");
+            }
+            
+            System.out.println("Successfully parsed " + connectionsList.size() + " connection(s)");
+            
+            // Update UI on EDT
+            SwingUtilities.invokeLater(() -> {
+                statusLabel.setText("File decrypted successfully! Found " + connectionsList.size() + " connection(s).");
+                statusLabel.setForeground(new Color(0, 128, 0));
+                exportButton.setEnabled(!connectionsList.isEmpty());
+                updateTableFromConnectionsList();
+                System.out.println("UI updated with " + connectionsList.size() + " rows");
+            });
+            
+        } catch (Exception e) {
+            System.err.println("Error parsing connections: " + e.getMessage());
+            e.printStackTrace();
+            SwingUtilities.invokeLater(() -> {
+                statusLabel.setText("Error parsing connections");
+                statusLabel.setForeground(Color.RED);
+                JOptionPane.showMessageDialog(this, 
+                    "Error parsing connections:\n" + e.getMessage(),
+                    "Error",
+                    JOptionPane.ERROR_MESSAGE);
+            });
+        }
     }
 
     private Path findDBeaverConfigFolder() {
