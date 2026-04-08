@@ -86,14 +86,19 @@ public class GetPassDBeaverGUI extends JFrame {
         connectionTable = new JTable(tableModel);
         connectionTable.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         connectionTable.setRowHeight(28);
+        connectionTable.setForeground(Color.BLACK);
+        connectionTable.setBackground(Color.WHITE);
+        connectionTable.setGridColor(new Color(220, 220, 220));
         connectionTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 13));
-        connectionTable.getTableHeader().setBackground(new Color(70, 130, 180));
+        connectionTable.getTableHeader().setBackground(new Color(60, 90, 140));
         connectionTable.getTableHeader().setForeground(Color.WHITE);
-        connectionTable.setSelectionBackground(new Color(173, 216, 230));
+        connectionTable.setSelectionBackground(new Color(200, 220, 240));
+        connectionTable.setSelectionForeground(Color.BLACK);
         connectionTable.setAutoCreateRowSorter(true);
         
         JScrollPane scrollPane = new JScrollPane(connectionTable);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200), 1));
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(150, 150, 150), 1));
+        scrollPane.setBackground(Color.WHITE);
 
         openButton = createStyledButton("Open credentials-config.json", new Color(70, 130, 180));
         autoSelectButton = createStyledButton("Auto-Select Encrypted File", new Color(60, 179, 113));
@@ -102,18 +107,19 @@ public class GetPassDBeaverGUI extends JFrame {
         
         statusLabel = new JLabel("Select the credentials-config.json file to decrypt or use Auto-Select.");
         statusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        statusLabel.setForeground(Color.BLACK);
         statusLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
 
         // Button panel
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 10));
-        buttonPanel.setBackground(new Color(245, 245, 245));
+        buttonPanel.setBackground(new Color(240, 240, 240));
         buttonPanel.add(openButton);
         buttonPanel.add(autoSelectButton);
         buttonPanel.add(exportButton);
 
         // Title panel
         JPanel titlePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        titlePanel.setBackground(new Color(70, 130, 180));
+        titlePanel.setBackground(new Color(60, 90, 140));
         titlePanel.setPreferredSize(new Dimension(getWidth(), 50));
         JLabel titleLabel = new JLabel("DBeaver Password Decryptor");
         titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
@@ -159,21 +165,33 @@ public class GetPassDBeaverGUI extends JFrame {
 
     private JButton createStyledButton(String text, Color bgColor) {
         JButton button = new JButton(text);
-        button.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        button.setFont(new Font("Segoe UI", Font.BOLD, 13));
         button.setBackground(bgColor);
-        button.setForeground(Color.WHITE);
+        button.setForeground(Color.BLACK);
         button.setFocusPainted(false);
-        button.setBorderPainted(false);
+        button.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(bgColor.darker(), 2),
+            BorderFactory.createEmptyBorder(5, 15, 5, 15)
+        ));
         button.setCursor(new Cursor(Cursor.HAND_CURSOR));
         button.setPreferredSize(new Dimension(220, 35));
+        button.setOpaque(true);
         
         // Add hover effect
         button.addMouseListener(new java.awt.event.MouseAdapter() {
             public void mouseEntered(java.awt.event.MouseEvent evt) {
                 button.setBackground(bgColor.darker());
+                button.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(Color.BLACK, 2),
+                    BorderFactory.createEmptyBorder(5, 15, 5, 15)
+                ));
             }
             public void mouseExited(java.awt.event.MouseEvent evt) {
                 button.setBackground(bgColor);
+                button.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(bgColor.darker(), 2),
+                    BorderFactory.createEmptyBorder(5, 15, 5, 15)
+                ));
             }
         });
         
