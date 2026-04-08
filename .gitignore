@@ -1,1 +1,9 @@
-Nothing needs to be added to the .gitignore file since only a Java source file was modified and no build artifacts, dependencies, or temporary files were included in the changes.
+```
+# Compiled and build artifacts
+*.class
+target/
+# Dependencies
+# Logs and temp files
+# Environment
+# Editors
+```

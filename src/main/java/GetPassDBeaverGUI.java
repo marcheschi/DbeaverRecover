@@ -415,16 +415,18 @@ public class GetPassDBeaverGUI extends JFrame {
                 throw new Exception("File too small to be valid encrypted content");
             }
 
-            // Skip first 16 bytes (salt/header) like bash script: dd bs=1 skip=16
+            // Skip first 16 bytes which contain the IV (like bash script: dd bs=1 skip=16)
+            // The IV is embedded in the file itself, not the static "0000...0000"
+            byte[] ivBytes = java.util.Arrays.copyOfRange(encryptedContent, 0, 16);
             byte[] actualCipherText = java.util.Arrays.copyOfRange(encryptedContent, 16, encryptedContent.length);
+            System.out.println("Extracted IV from file (first 16 bytes): " + bytesToHex(ivBytes));
             System.out.println("Actual ciphertext size (after skipping 16 bytes): " + actualCipherText.length + " bytes");
 
             String encryptionKey = "babb4a9f774ab853c96c2d653dfe544a";
-            String encryptionIv = "00000000000000000000000000000000";
-            String algorithm = "AES/CBC/PKCS5Padding";
+            String algorithm = "AES/CBC/NoPadding";  // DBeaver uses NoPadding, not PKCS5Padding
 
-            SecretKeySpec keySpec = new SecretKeySpec(encryptionKey.getBytes(java.nio.charset.StandardCharsets.UTF_8), "AES");
-            IvParameterSpec ivSpec = new IvParameterSpec(encryptionIv.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            SecretKeySpec keySpec = new SecretKeySpec(hexStringToByteArray(encryptionKey), "AES");
+            IvParameterSpec ivSpec = new IvParameterSpec(ivBytes);  // Use IV from file
             
             Cipher cipher = Cipher.getInstance(algorithm);
             cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
@@ -675,6 +677,26 @@ public class GetPassDBeaverGUI extends JFrame {
                     JOptionPane.ERROR_MESSAGE);
             }
         }
+    }
+    
+    // Helper method to convert byte array to hex string
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+    
+    // Helper method to convert hex string to byte array
+    private static byte[] hexStringToByteArray(String s) {
+        int len = s.length();
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4)
+                                 + Character.digit(s.charAt(i+1), 16));
+        }
+        return data;
     }
     
     private String escapeCsv(String value) {
