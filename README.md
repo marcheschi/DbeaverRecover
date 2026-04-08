@@ -4,9 +4,10 @@ This Java utility allows you to decrypt stored database credentials from DBeaver
 
 ## Features
 
-- Decrypts DBeaver stored credentials using AES/CBC/PKCS5Padding encryption
-- Graphical User Interface (GUI) for an intuitive user experience.
 - Decrypts DBeaver stored credentials using AES/CBC/PKCS5Padding encryption.
+- Graphical User Interface (GUI) for an intuitive user experience.
+- **Auto-select encrypted file**: Automatically detects and selects the `credentials-config.json` file based on your operating system (Windows, Linux, or macOS).
+- **Connection selector**: Displays all database connections stored in `data-sources.json` format, allowing you to quickly view connection details including name, host, port, database, driver, username, and decrypted password.
 
 ## Requirements
 
@@ -43,13 +44,29 @@ Alternatively, you can run the generated JAR file from the `target` directory:
 java -jar target/getpassdbeaver-1.0-SNAPSHOT.jar
 ```
 
-Once the application is running, click the "Open credentials-config.json" button and select your DBeaver `credentials-config.json` file to view the decrypted content.
+Once the application is running, you have two options:
+
+1. **Auto-Select**: Click the "Auto-Select Encrypted File" button to automatically locate and decrypt the credentials file based on your operating system.
+
+2. **Manual Selection**: Click the "Open credentials-config.json" button and select your DBeaver `credentials-config.json` file to view the decrypted content.
+
+After decryption, use the "Connection" dropdown on the right side of the window to select and view individual connection details including the decrypted password.
 
 ### Default Credentials File Locations
 
-- Linux: `~/.local/share/DBeaverData/workspace6/General/.dbeaver/credentials-config.json`
-- Windows: `%APDATA%\DBeaverData\workspace6\General\.dbeaver\credentials-config.json`
-- macOS: `~/Library/DBeaverData/workspace6/General/.dbeaver/credentials-config.json`
+The auto-select feature searches for the credentials file in these default locations:
+
+- **Linux**: 
+  - `~/.local/share/DBeaverData/workspace6/General/.dbeaver/credentials-config.json`
+  - `~/.dbeaver/workspace6/General/.dbeaver/credentials-config.json`
+  
+- **Windows**: 
+  - `%APPDATA%\DBeaverData\workspace6\General\.dbeaver\credentials-config.json`
+  - `%APPDATA%\DBeaver\workspace6\General\.dbeaver\credentials-config.json`
+  
+- **macOS**: 
+  - `~/Library/DBeaverData/workspace6/General/.dbeaver/credentials-config.json`
+  - `~/Library/Application Support/DBeaver/workspace6/General/.dbeaver/credentials-config.json`
 
 ## Security Notice
 
