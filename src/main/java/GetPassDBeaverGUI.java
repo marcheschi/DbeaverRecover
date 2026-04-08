@@ -88,16 +88,20 @@ public class GetPassDBeaverGUI extends JFrame {
         connectionTable.setRowHeight(28);
         connectionTable.setForeground(Color.BLACK);
         connectionTable.setBackground(Color.WHITE);
-        connectionTable.setGridColor(new Color(220, 220, 220));
+        connectionTable.setGridColor(new Color(200, 200, 200));
         connectionTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 13));
-        connectionTable.getTableHeader().setBackground(new Color(60, 90, 140));
-        connectionTable.getTableHeader().setForeground(Color.WHITE);
-        connectionTable.setSelectionBackground(new Color(200, 220, 240));
+        connectionTable.getTableHeader().setBackground(new Color(51, 102, 153));
+        connectionTable.getTableHeader().setForeground(Color.BLACK);
+        connectionTable.getTableHeader().setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(40, 80, 120), 2),
+            BorderFactory.createEmptyBorder(5, 5, 5, 5)
+        ));
+        connectionTable.setSelectionBackground(new Color(180, 210, 240));
         connectionTable.setSelectionForeground(Color.BLACK);
         connectionTable.setAutoCreateRowSorter(true);
         
         JScrollPane scrollPane = new JScrollPane(connectionTable);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(150, 150, 150), 1));
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(100, 100, 100), 1));
         scrollPane.setBackground(Color.WHITE);
 
         openButton = createStyledButton("Open credentials-config.json", new Color(70, 130, 180));
@@ -243,10 +247,27 @@ public class GetPassDBeaverGUI extends JFrame {
                         info.username = "N/A";
                         info.password = "N/A";
                         
+                        // Extract credentials from #connection object if present
+                        JSONObject connectionCred = connData.optJSONObject("#connection");
+                        if (connectionCred != null) {
+                            if (connectionCred.has("user")) {
+                                info.username = connectionCred.getString("user");
+                            }
+                            if (connectionCred.has("password")) {
+                                info.password = connectionCred.getString("password");
+                            }
+                        }
+                        
                         connectionsList.add(info);
                     }
                     
                     statusLabel.setText("File decrypted successfully! Found " + keys.length() + " connection(s).");
+                    
+                    // Populate table
+                    updateTableFromConnectionsList();
+                    
+                    // Enable export button
+                    exportButton.setEnabled(!connectionsList.isEmpty());
                     return;
                 }
             }
@@ -280,25 +301,17 @@ public class GetPassDBeaverGUI extends JFrame {
                 }
                 
                 statusLabel.setText("File decrypted successfully! Found " + datasources.length() + " connection(s).");
+                
+                // Populate table
+                updateTableFromConnectionsList();
+                
+                // Enable export button
+                exportButton.setEnabled(!connectionsList.isEmpty());
             }
-            
-            // Now try to merge with credentials from credentials-config.json
-            if (currentConfigFolder != null) {
-                Path dataSourcesPath = currentConfigFolder.resolve("data-sources.json");
-                if (Files.exists(dataSourcesPath)) {
-                    String dataSourcesContent = new String(Files.readAllBytes(dataSourcesPath));
-                    mergeWithCredentials(dataSourcesContent);
-                }
-            }
-            
-            // Populate table
-            updateTableFromConnectionsList();
-            
-            // Enable export button
-            exportButton.setEnabled(!connectionsList.isEmpty());
             
         } catch (Exception e) {
             statusLabel.setText("Warning: Could not parse connections: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -409,15 +422,22 @@ public class GetPassDBeaverGUI extends JFrame {
         }
         
         // If not found in standard paths, search recursively from home directory with more depth
-        try (Stream<Path> stream = Files.walk(Paths.get(userHome), 10)) {
+        try (Stream<Path> stream = Files.walk(Paths.get(userHome), 15)) {
             return stream
                 .filter(Files::isDirectory)
                 .filter(p -> p.endsWith(".dbeaver"))
-                .filter(p -> Files.exists(p.resolve("credentials-config.json")))
+                .filter(p -> {
+                    boolean hasCredentials = Files.exists(p.resolve("credentials-config.json"));
+                    if (hasCredentials) {
+                        System.out.println("Found credentials-config.json at: " + p);
+                    }
+                    return hasCredentials;
+                })
                 .findFirst()
                 .orElse(null);
         } catch (IOException e) {
-            // Ignore and return null
+            System.err.println("Error searching for DBeaver config: " + e.getMessage());
+            e.printStackTrace();
         }
         
         return null;
