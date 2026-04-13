@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<description xmlns="http://openoffice.org/2000/description">
+    <identifier value="com.medicalreports.plugin"/>
+    <display-name>
+        <name lang="en">Medical Reports Plugin</name>
+        <name lang="it">Plugin Referti Medici</name>
+    </display-name>
+    <version value="1.0.0"/>
+    <platform value="all"/>
+    <dependencies>
+        <OpenOffice.org-minimal-version value="4.0.0"/>
+    </dependencies>
+</description>
